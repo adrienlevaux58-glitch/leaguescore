@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import LiveGameStats from "./components/LiveGameStats";
-
+import MatchDetails from "./components/MatchDetails";
 interface Team {
   id?: string;
   name: string;
@@ -311,15 +311,19 @@ if (!team1 || !team2) return null;
                     </div>
                   </div>
 
-                  {/* Live Game Stats */}
+{/* Live Game Stats */}
                   {isLive && liveGameId && (
-  <LiveGameStats
-    gameId={liveGameId}
-    blueTeamName={team1?.code}
-    redTeamName={team2?.code}
-    games={event.match.games}
-  />
-)}
+                    <LiveGameStats
+                      gameId={liveGameId}
+                      blueTeamName={team1?.code}
+                      redTeamName={team2?.code}
+                      games={event.match.games}
+                    />
+                  )}
+
+                  {isCompleted && event.match?.id && (
+                    <MatchDetails matchId={event.match.id} />
+                  )}
 
                 </div>
               );
