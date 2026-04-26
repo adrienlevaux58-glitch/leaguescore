@@ -55,11 +55,39 @@ const DRAGON_ICONS: Record<string, string> = {
   hextech: "⚡", chemtech: "☣️", elder: "👴",
 };
 
-const PATCH_VERSION = "14.8.1";
+const PATCH_VERSION = "15.8.1";
+
+const CHAMPION_NAME_MAP: Record<string, string> = {
+  "AurelionSol": "AurelionSol",
+  "Aurora": "Aurora",
+  "Belveth": "Belveth",
+  "Chogath": "Chogath",
+  "DrMundo": "DrMundo",
+  "JarvanIV": "JarvanIV",
+  "Kaisa": "Kaisa",
+  "Khazix": "Khazix",
+  "KogMaw": "KogMaw",
+  "Leblanc": "Leblanc",
+  "LeeSin": "LeeSin",
+  "MasterYi": "MasterYi",
+  "MissFortune": "MissFortune",
+  "MonkeyKing": "Wukong",
+  "Nunu": "Nunu",
+  "RekSai": "RekSai",
+  "TahmKench": "TahmKench",
+  "TwistedFate": "TwistedFate",
+  "Velkoz": "Velkoz",
+  "XinZhao": "XinZhao",
+  "Yuumi": "Yuumi",
+};
+
+function getChampionImageName(championId: string): string {
+  return CHAMPION_NAME_MAP[championId] || championId;
+}
 
 function ChampionIcon({ championId, size = 32 }: { championId: string; size?: number }) {
   const [error, setError] = useState(false);
-  const url = `https://ddragon.leagueoflegends.com/cdn/${PATCH_VERSION}/img/champion/${championId}.png`;
+  const url = `https://ddragon.leagueoflegends.com/cdn/${PATCH_VERSION}/img/champion/${getChampionImageName(championId)}.png`;
 
   if (error) {
     return (
@@ -109,9 +137,14 @@ export default function LiveGameStats({
         setData(json.window);
         const frames = json.window.frames;
         if (frames && frames.length > 0) {
+          const firstFrame = frames[0];
           const lastFrame = frames[frames.length - 1];
-          const ts = new Date(lastFrame.rfc460Timestamp);
-          setGameTime(`${ts.getMinutes()}:${ts.getSeconds().toString().padStart(2, "0")}`);
+          const start = new Date(firstFrame.rfc460Timestamp).getTime();
+          const end = new Date(lastFrame.rfc460Timestamp).getTime();
+          const diffMs = end - start;
+          const mins = Math.floor(diffMs / 60000);
+          const secs = Math.floor((diffMs % 60000) / 1000).toString().padStart(2, "0");
+          setGameTime(`${mins}:${secs}`);
         }
       }
     } catch (e) {
@@ -133,7 +166,7 @@ export default function LiveGameStats({
       <div className="mt-4 bg-[#080c18] rounded-xl p-6 animate-pulse">
         <div className="h-4 bg-[#1e2a3a] rounded w-48 mb-4"></div>
         <div className="grid grid-cols-3 gap-4">
-          {[1,2,3].map(i => <div key={i} className="h-20 bg-[#1e2a3a] rounded"></div>)}
+          {[1, 2, 3].map(i => <div key={i} className="h-20 bg-[#1e2a3a] rounded"></div>)}
         </div>
       </div>
     );
@@ -163,11 +196,10 @@ export default function LiveGameStats({
   return (
     <div className="mt-4 bg-[#080c18] border border-[#1e2a3a] rounded-xl overflow-hidden">
 
-      {/* Header with game tabs */}
+      {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#0d1220] border-b border-[#1e2a3a]">
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-500 font-bold">LIVE STATS</span>
-          {/* Game tabs */}
           {availableGames.length > 1 && (
             <div className="flex gap-1">
               {availableGames.map(g => (
@@ -206,13 +238,27 @@ export default function LiveGameStats({
         <div className="p-4 bg-blue-500/5">
           <div className="text-blue-400 font-black text-sm mb-3">{blueTeamName}</div>
           <div className="space-y-2 text-xs">
-            <div className="flex justify-between"><span className="text-gray-500">Kills</span><span className="font-black text-white">{blue.totalKills}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Gold</span><span className="font-black text-[#C89B3C]">{(blue.totalGold / 1000).toFixed(1)}k</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Towers</span><span className="font-black text-white">{blue.towers}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Barons</span><span className="font-black text-purple-400">{blue.barons}</span></div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Kills</span>
+              <span className="font-black text-white">{blue.totalKills}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Gold</span>
+              <span className="font-black text-[#C89B3C]">{(blue.totalGold / 1000).toFixed(1)}k</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Towers</span>
+              <span className="font-black text-white">{blue.towers}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Barons</span>
+              <span className="font-black text-purple-400">{blue.barons}</span>
+            </div>
             {blue.dragons.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-1">
-                {blue.dragons.map((d, i) => <span key={i}>{DRAGON_ICONS[d] || "🐉"}</span>)}
+                {blue.dragons.map((d, i) => (
+                  <span key={i} title={d}>{DRAGON_ICONS[d] || "🐉"}</span>
+                ))}
               </div>
             )}
           </div>
@@ -237,13 +283,27 @@ export default function LiveGameStats({
         <div className="p-4 bg-red-500/5">
           <div className="text-red-400 font-black text-sm mb-3 text-right">{redTeamName}</div>
           <div className="space-y-2 text-xs">
-            <div className="flex justify-between"><span className="text-gray-500">Kills</span><span className="font-black text-white">{red.totalKills}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Gold</span><span className="font-black text-[#C89B3C]">{(red.totalGold / 1000).toFixed(1)}k</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Towers</span><span className="font-black text-white">{red.towers}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Barons</span><span className="font-black text-purple-400">{red.barons}</span></div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Kills</span>
+              <span className="font-black text-white">{red.totalKills}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Gold</span>
+              <span className="font-black text-[#C89B3C]">{(red.totalGold / 1000).toFixed(1)}k</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Towers</span>
+              <span className="font-black text-white">{red.towers}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Barons</span>
+              <span className="font-black text-purple-400">{red.barons}</span>
+            </div>
             {red.dragons.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-1 justify-end">
-                {red.dragons.map((d, i) => <span key={i}>{DRAGON_ICONS[d] || "🐉"}</span>)}
+                {red.dragons.map((d, i) => (
+                  <span key={i} title={d}>{DRAGON_ICONS[d] || "🐉"}</span>
+                ))}
               </div>
             )}
           </div>
@@ -263,8 +323,10 @@ export default function LiveGameStats({
                 <div key={player.participantId} className="flex items-center gap-2 text-xs">
                   <span className="text-gray-600 w-3">{ROLE_SHORT[player.role]}</span>
                   <ChampionIcon championId={player.championId} size={28} />
-                  <span className="text-gray-400 flex-1 truncate">{player.summonerName.replace(/^[A-Z]+ /, "")}</span>
-                  <div className="flex items-center gap-1 text-right">
+                  <span className="text-gray-400 flex-1 truncate">
+                    {player.summonerName.replace(/^[A-Z]+ /, "")}
+                  </span>
+                  <div className="flex items-center gap-1">
                     <span className="text-green-400 font-bold">{stats?.kills ?? 0}</span>
                     <span className="text-gray-600">/</span>
                     <span className="text-red-400 font-bold">{stats?.deaths ?? 0}</span>
@@ -288,8 +350,10 @@ export default function LiveGameStats({
                 <div key={player.participantId} className="flex items-center gap-2 text-xs">
                   <span className="text-gray-600 w-3">{ROLE_SHORT[player.role]}</span>
                   <ChampionIcon championId={player.championId} size={28} />
-                  <span className="text-gray-400 flex-1 truncate">{player.summonerName.replace(/^[A-Z]+ /, "")}</span>
-                  <div className="flex items-center gap-1 text-right">
+                  <span className="text-gray-400 flex-1 truncate">
+                    {player.summonerName.replace(/^[A-Z]+ /, "")}
+                  </span>
+                  <div className="flex items-center gap-1">
                     <span className="text-green-400 font-bold">{stats?.kills ?? 0}</span>
                     <span className="text-gray-600">/</span>
                     <span className="text-red-400 font-bold">{stats?.deaths ?? 0}</span>
