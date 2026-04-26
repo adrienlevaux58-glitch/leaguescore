@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import LiveGameStats from "./components/LiveGameStats";
 
 interface Team {
   id?: string;
@@ -7,20 +8,27 @@ interface Team {
   code: string;
   image: string;
   result: { outcome: string | null; gameWins: number };
-  record: { wins: number; losses: number };
+  record: { wins: number; losses: number } | null;
+}
+
+interface Game {
+  number: number;
+  id: string;
+  state: string;
 }
 
 interface Match {
   id?: string;
   startTime: string;
   state: string;
+  type?: string;
   blockName: string;
   league: { name: string; slug: string; image?: string };
   match: {
     id?: string;
     teams: Team[];
     strategy: { count: number };
-    games?: { number: number; state: string }[];
+    games?: Game[];
   };
 }
 
@@ -40,12 +48,8 @@ export default function Home() {
       ]);
       const liveData = await liveRes.json();
       const scheduleData = await scheduleRes.json();
-
-      const live = liveData?.data?.schedule?.events || [];
-      const schedule = scheduleData?.data?.schedule?.events || [];
-
-      setLiveMatches(live);
-      setScheduleMatches(schedule);
+     setLiveMatches((liveData?.data?.schedule?.events || []).filter((e: Match) => e.type === "match"));
+      setScheduleMatches(scheduleData?.data?.schedule?.events || []);
       setLastUpdate(new Date().toLocaleTimeString());
     } catch (e) {
       console.error(e);
@@ -61,13 +65,14 @@ export default function Home() {
   }, []);
 
   const now = new Date();
-const upcoming = scheduleMatches.filter(m => 
-  m.state === "unstarted" && new Date(m.startTime) > now
-);
-const results = scheduleMatches.filter(m => 
-  m.state === "completed" || 
-  (m.state === "unstarted" && new Date(m.startTime) < now)
-);
+  const upcoming = scheduleMatches.filter(m =>
+    m.state === "unstarted" && new Date(m.startTime) > now
+  );
+  const results = scheduleMatches.filter(m =>
+    m.state === "completed" ||
+    (m.state === "unstarted" && new Date(m.startTime) < now)
+  );
+
   const getCurrentMatches = () => {
     if (activeTab === "live") return liveMatches;
     if (activeTab === "upcoming") return upcoming;
@@ -80,18 +85,22 @@ const results = scheduleMatches.filter(m =>
     ? allMatches
     : allMatches.filter(m => m.league.name === activeLeague);
 
-  const formatTime = (time: string) => {
-    return new Date(time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-  };
+  const formatTime = (time: string) =>
+    new Date(time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
-  const formatDate = (time: string) => {
-    return new Date(time).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
-  };
+  const formatDate = (time: string) =>
+    new Date(time).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
 
   const getCurrentGame = (match: Match) => {
     if (!match.match.games) return 1;
     return match.match.games.filter(g => g.state === "inProgress").length ||
       match.match.games.filter(g => g.state === "completed").length || 1;
+  };
+
+  const getLiveGameId = (match: Match): string | null => {
+    if (!match.match.games) return null;
+    const inProgress = match.match.games.find(g => g.state === "inProgress");
+    return inProgress?.id || match.match.games[0]?.id || null;
   };
 
   return (
@@ -191,18 +200,20 @@ const results = scheduleMatches.filter(m =>
         ) : (
           <div className="space-y-3">
             {filteredMatches.map((event, idx) => {
-              const team1 = event.match.teams[0];
-              const team2 = event.match.teams[1];
+const team1 = event.match?.teams?.[0];
+const team2 = event.match?.teams?.[1];
+if (!team1 || !team2) return null;
               const isLive = event.state === "inProgress";
               const isCompleted = event.state === "completed";
               const currentGame = isLive ? getCurrentGame(event) : null;
               const winner1 = team1?.result?.outcome === "win";
               const winner2 = team2?.result?.outcome === "win";
+              const liveGameId = isLive ? getLiveGameId(event) : null;
 
               return (
                 <div
                   key={event.match.id || idx}
-                  className={`bg-[#0d1220] border rounded-xl p-5 cursor-pointer transition ${
+                  className={`bg-[#0d1220] border rounded-xl p-5 transition ${
                     isLive
                       ? "border-[#C89B3C]/40 hover:border-[#C89B3C]/80"
                       : "border-[#1e2a3a] hover:border-[#2e3a4a]"
@@ -250,8 +261,6 @@ const results = scheduleMatches.filter(m =>
 
                   {/* Teams */}
                   <div className="flex items-center justify-between">
-
-                    {/* Team 1 */}
                     <div className={`flex items-center gap-3 flex-1 ${isCompleted && !winner1 ? "opacity-50" : ""}`}>
                       <img
                         src={team1?.image}
@@ -260,7 +269,7 @@ const results = scheduleMatches.filter(m =>
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       />
                       <div>
-                        <div className={`font-black text-lg ${winner1 ? "text-white" : ""}`}>
+                        <div className="font-black text-lg">
                           {team1?.code}
                           {winner1 && <span className="ml-2 text-green-400 text-xs">WIN</span>}
                         </div>
@@ -268,7 +277,6 @@ const results = scheduleMatches.filter(m =>
                       </div>
                     </div>
 
-                    {/* Score */}
                     <div className="text-center px-6">
                       {isLive ? (
                         <div className="font-black text-3xl text-[#C89B3C]">
@@ -286,10 +294,9 @@ const results = scheduleMatches.filter(m =>
                       </div>
                     </div>
 
-                    {/* Team 2 */}
                     <div className={`flex items-center gap-3 flex-1 justify-end ${isCompleted && !winner2 ? "opacity-50" : ""}`}>
                       <div className="text-right">
-                        <div className={`font-black text-lg ${winner2 ? "text-white" : ""}`}>
+                        <div className="font-black text-lg">
                           {winner2 && <span className="mr-2 text-green-400 text-xs">WIN</span>}
                           {team2?.code}
                         </div>
@@ -302,8 +309,18 @@ const results = scheduleMatches.filter(m =>
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       />
                     </div>
-
                   </div>
+
+                  {/* Live Game Stats */}
+                  {isLive && liveGameId && (
+  <LiveGameStats
+    gameId={liveGameId}
+    blueTeamName={team1?.code}
+    redTeamName={team2?.code}
+    games={event.match.games}
+  />
+)}
+
                 </div>
               );
             })}
