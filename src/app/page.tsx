@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 
 interface Team {
-  id: string;
+  id?: string;
   name: string;
   code: string;
   image: string;
@@ -11,30 +11,41 @@ interface Team {
 }
 
 interface Match {
-  id: string;
+  id?: string;
   startTime: string;
   state: string;
   blockName: string;
-  league: { name: string; slug: string; image: string };
+  league: { name: string; slug: string; image?: string };
   match: {
+    id?: string;
     teams: Team[];
     strategy: { count: number };
-    games: { number: number; state: string }[];
+    games?: { number: number; state: string }[];
   };
 }
 
 export default function Home() {
-  const [matches, setMatches] = useState<Match[]>([]);
+  const [liveMatches, setLiveMatches] = useState<Match[]>([]);
+  const [scheduleMatches, setScheduleMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeLeague, setActiveLeague] = useState("All");
+  const [activeTab, setActiveTab] = useState<"live" | "upcoming" | "results">("live");
   const [lastUpdate, setLastUpdate] = useState<string>("");
 
-  const fetchLive = async () => {
+  const fetchData = async () => {
     try {
-      const res = await fetch("/api/live");
-      const data = await res.json();
-      const events = data?.data?.schedule?.events || [];
-      setMatches(events);
+      const [liveRes, scheduleRes] = await Promise.all([
+        fetch("/api/live"),
+        fetch("/api/schedule")
+      ]);
+      const liveData = await liveRes.json();
+      const scheduleData = await scheduleRes.json();
+
+      const live = liveData?.data?.schedule?.events || [];
+      const schedule = scheduleData?.data?.schedule?.events || [];
+
+      setLiveMatches(live);
+      setScheduleMatches(schedule);
       setLastUpdate(new Date().toLocaleTimeString());
     } catch (e) {
       console.error(e);
@@ -44,20 +55,43 @@ export default function Home() {
   };
 
   useEffect(() => {
-    fetchLive();
-    const interval = setInterval(fetchLive, 30000);
+    fetchData();
+    const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  const leagues = ["All", ...Array.from(new Set(matches.map(m => m.league.name)))];
+  const now = new Date();
+const upcoming = scheduleMatches.filter(m => 
+  m.state === "unstarted" && new Date(m.startTime) > now
+);
+const results = scheduleMatches.filter(m => 
+  m.state === "completed" || 
+  (m.state === "unstarted" && new Date(m.startTime) < now)
+);
+  const getCurrentMatches = () => {
+    if (activeTab === "live") return liveMatches;
+    if (activeTab === "upcoming") return upcoming;
+    return results;
+  };
 
+  const allMatches = getCurrentMatches();
+  const leagues = ["All", ...Array.from(new Set(allMatches.map(m => m.league.name)))];
   const filteredMatches = activeLeague === "All"
-    ? matches
-    : matches.filter(m => m.league.name === activeLeague);
+    ? allMatches
+    : allMatches.filter(m => m.league.name === activeLeague);
+
+  const formatTime = (time: string) => {
+    return new Date(time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const formatDate = (time: string) => {
+    return new Date(time).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+  };
 
   const getCurrentGame = (match: Match) => {
+    if (!match.match.games) return 1;
     return match.match.games.filter(g => g.state === "inProgress").length ||
-      match.match.games.filter(g => g.state === "completed").length;
+      match.match.games.filter(g => g.state === "completed").length || 1;
   };
 
   return (
@@ -80,15 +114,31 @@ export default function Home() {
 
       <div className="max-w-6xl mx-auto px-6 py-8">
 
-        {/* LIVE HEADER */}
+        {/* TABS */}
         <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-full px-3 py-1">
-              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-              <span className="text-red-400 text-xs font-bold tracking-wider">LIVE</span>
-            </div>
-            <h1 className="text-2xl font-black">Live Matches</h1>
-            <span className="text-gray-500 text-sm">{matches.length} match{matches.length > 1 ? "es" : ""}</span>
+          <div className="flex gap-1 bg-[#0d1220] border border-[#1e2a3a] rounded-xl p-1">
+            <button
+              onClick={() => { setActiveTab("live"); setActiveLeague("All"); }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition ${activeTab === "live" ? "bg-red-500/20 text-red-400 border border-red-500/30" : "text-gray-500 hover:text-white"}`}
+            >
+              <div className={`w-2 h-2 rounded-full ${activeTab === "live" ? "bg-red-500 animate-pulse" : "bg-gray-600"}`}></div>
+              LIVE
+              {liveMatches.length > 0 && (
+                <span className="bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{liveMatches.length}</span>
+              )}
+            </button>
+            <button
+              onClick={() => { setActiveTab("upcoming"); setActiveLeague("All"); }}
+              className={`px-4 py-2 rounded-lg text-sm font-bold transition ${activeTab === "upcoming" ? "bg-[#1e2a3a] text-white" : "text-gray-500 hover:text-white"}`}
+            >
+              Upcoming
+            </button>
+            <button
+              onClick={() => { setActiveTab("results"); setActiveLeague("All"); }}
+              className={`px-4 py-2 rounded-lg text-sm font-bold transition ${activeTab === "results" ? "bg-[#1e2a3a] text-white" : "text-gray-500 hover:text-white"}`}
+            >
+              Results
+            </button>
           </div>
           {lastUpdate && (
             <span className="text-gray-600 text-xs">Updated {lastUpdate}</span>
@@ -96,21 +146,23 @@ export default function Home() {
         </div>
 
         {/* LEAGUE TABS */}
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-          {leagues.map((league) => (
-            <button
-              key={league}
-              onClick={() => setActiveLeague(league)}
-              className={`px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition ${
-                activeLeague === league
-                  ? "bg-[#C89B3C] text-black"
-                  : "bg-[#1e2a3a] text-gray-400 hover:text-white"
-              }`}
-            >
-              {league}
-            </button>
-          ))}
-        </div>
+        {leagues.length > 1 && (
+          <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+            {leagues.map((league) => (
+              <button
+                key={league}
+                onClick={() => setActiveLeague(league)}
+                className={`px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition ${
+                  activeLeague === league
+                    ? "bg-[#C89B3C] text-black"
+                    : "bg-[#1e2a3a] text-gray-400 hover:text-white"
+                }`}
+              >
+                {league}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* MATCHES */}
         {loading ? (
@@ -129,20 +181,27 @@ export default function Home() {
         ) : filteredMatches.length === 0 ? (
           <div className="text-center py-20">
             <div className="text-6xl mb-4">🎮</div>
-            <h2 className="font-black text-2xl mb-2">No Live Matches</h2>
-            <p className="text-gray-500">Check back when tournaments are live!</p>
+            <h2 className="font-black text-2xl mb-2">
+              {activeTab === "live" ? "No Live Matches" : activeTab === "upcoming" ? "No Upcoming Matches" : "No Results Yet"}
+            </h2>
+            <p className="text-gray-500">
+              {activeTab === "live" ? "Check back when tournaments are live!" : "Check back later!"}
+            </p>
           </div>
         ) : (
           <div className="space-y-3">
-            {filteredMatches.map((event) => {
+            {filteredMatches.map((event, idx) => {
               const team1 = event.match.teams[0];
               const team2 = event.match.teams[1];
-              const currentGame = getCurrentGame(event);
               const isLive = event.state === "inProgress";
+              const isCompleted = event.state === "completed";
+              const currentGame = isLive ? getCurrentGame(event) : null;
+              const winner1 = team1?.result?.outcome === "win";
+              const winner2 = team2?.result?.outcome === "win";
 
               return (
                 <div
-                  key={event.id}
+                  key={event.match.id || idx}
                   className={`bg-[#0d1220] border rounded-xl p-5 cursor-pointer transition ${
                     isLive
                       ? "border-[#C89B3C]/40 hover:border-[#C89B3C]/80"
@@ -158,21 +217,32 @@ export default function Home() {
                           <span className="text-red-400 text-xs font-bold">LIVE</span>
                         </div>
                       )}
-                      <div className="flex items-center gap-2">
+                      {event.league.image && (
                         <img
                           src={event.league.image}
                           alt={event.league.name}
                           className="w-5 h-5 object-contain"
                           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                         />
-                        <span className="text-gray-400 text-sm font-bold">{event.league.name}</span>
-                      </div>
+                      )}
+                      <span className="text-gray-300 text-sm font-bold">{event.league.name}</span>
                       <span className="text-gray-600 text-xs">{event.blockName}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      {currentGame > 0 && (
+                      {isCompleted && (
+                        <span className="text-gray-500 text-xs">{formatDate(event.startTime)}</span>
+                      )}
+                      {!isLive && !isCompleted && (
+                        <span className="text-[#C89B3C] text-sm font-bold">{formatTime(event.startTime)}</span>
+                      )}
+                      {currentGame && (
                         <span className="text-gray-500 text-xs bg-[#1e2a3a] px-2 py-1 rounded-lg">
                           Game {currentGame} · Bo{event.match.strategy.count}
+                        </span>
+                      )}
+                      {!isLive && (
+                        <span className="text-gray-600 text-xs bg-[#1e2a3a] px-2 py-1 rounded-lg">
+                          Bo{event.match.strategy.count}
                         </span>
                       )}
                     </div>
@@ -180,17 +250,21 @@ export default function Home() {
 
                   {/* Teams */}
                   <div className="flex items-center justify-between">
+
                     {/* Team 1 */}
-                    <div className="flex items-center gap-3 flex-1">
+                    <div className={`flex items-center gap-3 flex-1 ${isCompleted && !winner1 ? "opacity-50" : ""}`}>
                       <img
                         src={team1?.image}
                         alt={team1?.name}
                         className="w-10 h-10 object-contain"
-                        onError={(e) => { (e.target as HTMLImageElement).src = ''; }}
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       />
                       <div>
-                        <div className="font-black text-lg">{team1?.code}</div>
-                        <div className="text-gray-500 text-xs">{team1?.record.wins}W {team1?.record.losses}L</div>
+                        <div className={`font-black text-lg ${winner1 ? "text-white" : ""}`}>
+                          {team1?.code}
+                          {winner1 && <span className="ml-2 text-green-400 text-xs">WIN</span>}
+                        </div>
+                        <div className="text-gray-500 text-xs">{team1?.record?.wins ?? 0}W {team1?.record?.losses ?? 0}L</div>
                       </div>
                     </div>
 
@@ -200,29 +274,36 @@ export default function Home() {
                         <div className="font-black text-3xl text-[#C89B3C]">
                           {team1?.result.gameWins} — {team2?.result.gameWins}
                         </div>
+                      ) : isCompleted ? (
+                        <div className="font-black text-3xl text-white">
+                          {team1?.result.gameWins} — {team2?.result.gameWins}
+                        </div>
                       ) : (
                         <div className="font-bold text-gray-500 text-xl">VS</div>
                       )}
                       <div className="text-gray-600 text-xs mt-1">
-                        Bo{event.match.strategy.count}
+                        {isLive ? `Bo${event.match.strategy.count}` : !isCompleted ? formatDate(event.startTime) : "Final"}
                       </div>
                     </div>
 
                     {/* Team 2 */}
-                    <div className="flex items-center gap-3 flex-1 justify-end">
+                    <div className={`flex items-center gap-3 flex-1 justify-end ${isCompleted && !winner2 ? "opacity-50" : ""}`}>
                       <div className="text-right">
-                        <div className="font-black text-lg">{team2?.code}</div>
-                        <div className="text-gray-500 text-xs">{team2?.record.wins}W {team2?.record.losses}L</div>
+                        <div className={`font-black text-lg ${winner2 ? "text-white" : ""}`}>
+                          {winner2 && <span className="mr-2 text-green-400 text-xs">WIN</span>}
+                          {team2?.code}
+                        </div>
+                        <div className="text-gray-500 text-xs">{team2?.record?.wins ?? 0}W {team2?.record?.losses ?? 0}L</div>
                       </div>
                       <img
                         src={team2?.image}
                         alt={team2?.name}
                         className="w-10 h-10 object-contain"
-                        onError={(e) => { (e.target as HTMLImageElement).src = ''; }}
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       />
                     </div>
-                  </div>
 
+                  </div>
                 </div>
               );
             })}
